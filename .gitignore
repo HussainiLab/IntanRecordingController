@@ -7,6 +7,12 @@
 *.o
 *.obj
 
+.vs/
+debug/
+GeneratedFiles/
+Win32/
+release/
+
 # Precompiled Headers
 *.gch
 *.pch
