@@ -1,6 +1,7 @@
 #! /bin/env python
 #
 # Michael Gibson 17 July 2015
+# Modified Adrian Foy Sep 2018
 
 import sys, struct, math, os, time
 import numpy as np
@@ -47,12 +48,12 @@ def read_data(filename):
 
     num_data_blocks = int(bytes_remaining / bytes_per_block)
 
-    num_amplifier_samples = 60 * num_data_blocks
-    num_aux_input_samples = 15 * num_data_blocks
+    num_amplifier_samples = header['num_samples_per_data_block'] * num_data_blocks
+    num_aux_input_samples = int((header['num_samples_per_data_block'] / 4) * num_data_blocks)
     num_supply_voltage_samples = 1 * num_data_blocks
-    num_board_adc_samples = 60 * num_data_blocks
-    num_board_dig_in_samples = 60 * num_data_blocks
-    num_board_dig_out_samples = 60 * num_data_blocks
+    num_board_adc_samples = header['num_samples_per_data_block'] * num_data_blocks
+    num_board_dig_in_samples = header['num_samples_per_data_block'] * num_data_blocks
+    num_board_dig_out_samples = header['num_samples_per_data_block'] * num_data_blocks
 
     record_time = num_amplifier_samples / header['sample_rate']
 
@@ -77,9 +78,16 @@ def read_data(filename):
         data['supply_voltage_data'] = np.zeros([header['num_supply_voltage_channels'], num_supply_voltage_samples], dtype=np.uint)
         data['temp_sensor_data'] = np.zeros([header['num_temp_sensor_channels'], num_supply_voltage_samples], dtype=np.uint)
         data['board_adc_data'] = np.zeros([header['num_board_adc_channels'], num_board_adc_samples], dtype=np.uint)
-        data['board_dig_in_data'] = np.zeros([header['num_board_dig_in_channels'], num_board_dig_in_samples], dtype=np.uint)
+        
+        # by default, this script interprets digital events (digital inputs and outputs) as booleans
+        # if unsigned int values are preferred(0 for False, 1 for True), replace the 'dtype=np.bool' argument with 'dtype=np.uint' as shown
+        # the commented line below illustrates this for digital input data; the same can be done for digital out
+        
+        #data['board_dig_in_data'] = np.zeros([header['num_board_dig_in_channels'], num_board_dig_in_samples], dtype=np.uint)
+        data['board_dig_in_data'] = np.zeros([header['num_board_dig_in_channels'], num_board_dig_in_samples], dtype=np.bool)
         data['board_dig_in_raw'] = np.zeros(num_board_dig_in_samples, dtype=np.uint)
-        data['board_dig_out_data'] = np.zeros([header['num_board_dig_out_channels'], num_board_dig_out_samples], dtype=np.uint)
+        
+        data['board_dig_out_data'] = np.zeros([header['num_board_dig_out_channels'], num_board_dig_out_samples], dtype=np.bool)
         data['board_dig_out_raw'] = np.zeros(num_board_dig_out_samples, dtype=np.uint)
 
         # Read sampled data from file.
@@ -100,12 +108,12 @@ def read_data(filename):
             read_one_data_block(data, header, indices, fid)
 
             # Increment indices
-            indices['amplifier'] += 60
-            indices['aux_input'] += 15
+            indices['amplifier'] += header['num_samples_per_data_block']
+            indices['aux_input'] += int(header['num_samples_per_data_block'] / 4)
             indices['supply_voltage'] += 1
-            indices['board_adc'] += 60
-            indices['board_dig_in'] += 60
-            indices['board_dig_out'] += 60      
+            indices['board_adc'] += header['num_samples_per_data_block']
+            indices['board_dig_in'] += header['num_samples_per_data_block']
+            indices['board_dig_out'] += header['num_samples_per_data_block']            
 
             fraction_done = 100 * (1.0 * i / num_data_blocks)
             if fraction_done >= percent_done:
@@ -115,8 +123,6 @@ def read_data(filename):
         # Make sure we have read exactly the right amount of data.
         bytes_remaining = filesize - fid.tell()
         if bytes_remaining != 0: raise Exception('Error: End of file not reached.')
-
-
 
     # Close data file.
     fid.close()
@@ -137,7 +143,9 @@ def read_data(filename):
         data['aux_input_data'] = np.multiply(37.4e-6, data['aux_input_data'])               # units = volts
         data['supply_voltage_data'] = np.multiply(74.8e-6, data['supply_voltage_data'])     # units = volts
         if header['eval_board_mode'] == 1:
-            data['board_adc_data'] = np.multiply(152.59e-6, (data['board_adc_data'].astype(np.int32) - 32768)) # units = volts    
+            data['board_adc_data'] = np.multiply(152.59e-6, (data['board_adc_data'].astype(np.int32) - 32768)) # units = volts
+        elif header['eval_board_mode'] == 13:
+            data['board_adc_data'] = np.multiply(312.5e-6, (data['board_adc_data'].astype(np.int32) - 32768)) # units = volts
         else:
             data['board_adc_data'] = np.multiply(50.354e-6, data['board_adc_data'])           # units = volts
         data['temp_sensor_data'] = np.multiply(0.01, data['temp_sensor_data'])               # units = deg C
@@ -152,7 +160,7 @@ def read_data(filename):
         # Scale time steps (units = seconds).
         data['t_amplifier'] = data['t_amplifier'] / header['sample_rate']
         data['t_aux_input'] = data['t_amplifier'][range(0, len(data['t_amplifier']), 4)]
-        data['t_supply_voltage'] = data['t_amplifier'][range(0, len(data['t_amplifier']), 60)]
+        data['t_supply_voltage'] = data['t_amplifier'][range(0, len(data['t_amplifier']), header['num_samples_per_data_block'])]
         data['t_board_adc'] = data['t_amplifier']
         data['t_dig'] = data['t_amplifier']
         data['t_temp_sensor'] = data['t_supply_voltage']
@@ -191,4 +199,4 @@ def plural(n):
 
 if __name__ == '__main__':
     a=read_data(sys.argv[1])
-    #print a
+    #print(a)

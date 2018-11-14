@@ -1,10 +1,10 @@
 #! /bin/env python
 #
 # Michael Gibson 23 April 2015
+# Modified Adrian Foy Sep 2018
 
 import sys, struct
 from intanutil.qstring import read_qstring
-
 
 def read_header(fid):
     """Reads the Intan File Format header from the given file."""
@@ -20,9 +20,9 @@ def read_header(fid):
     (version['major'], version['minor']) = struct.unpack('<hh', fid.read(4)) 
     header['version'] = version
 
-    #print('')
-    #print('Reading Intan Technologies RHD2000 Data File, Version {}.{}'.format(version['major'], version['minor']))
-    #print('')
+    print('')
+    print('Reading Intan Technologies RHD2000 Data File, Version {}.{}'.format(version['major'], version['minor']))
+    print('')
 
     freq = {}
 
@@ -47,7 +47,7 @@ def read_header(fid):
     note1 = read_qstring(fid)
     note2 = read_qstring(fid)
     note3 = read_qstring(fid)
-    header['notes'] = {'note1': note1, 'note2': note2, 'note3': note3}
+    header['notes'] = { 'note1' : note1, 'note2' : note2, 'note3' : note3}
 
     if (version['major'] == 1 and version['minor'] >= 6) or (version['major'] > 1):
         settings_filename = read_qstring(fid)
@@ -60,7 +60,7 @@ def read_header(fid):
     header['num_temp_sensor_channels'] = 0
     if (version['major'] == 1 and version['minor'] >= 1) or (version['major'] > 1) :
         header['num_temp_sensor_channels'], = struct.unpack('<h', fid.read(2))
-
+        
     # If data file is from GUI v1.3 or later, load eval board mode.
     header['eval_board_mode'] = 0
     if ((version['major'] == 1) and (version['minor'] >= 3)) or (version['major'] > 1) :
@@ -75,7 +75,7 @@ def read_header(fid):
     # Place frequency-related information in data structure. (Note: much of this structure is set above)
     freq['amplifier_sample_rate'] = header['sample_rate']
     freq['aux_input_sample_rate'] = header['sample_rate'] / 4
-    freq['supply_voltage_sample_rate'] = header['sample_rate'] / 60
+    freq['supply_voltage_sample_rate'] = header['sample_rate'] / header['num_samples_per_data_block']
     freq['board_adc_sample_rate'] = header['sample_rate']
     freq['board_dig_in_sample_rate'] = header['sample_rate']
 
@@ -93,8 +93,9 @@ def read_header(fid):
     # Read signal summary from data file header.
 
     number_of_signal_groups, = struct.unpack('<h', fid.read(2))
+    print('n signal groups {}'.format(number_of_signal_groups))
 
-    for signal_group in range(0, number_of_signal_groups):
+    for signal_group in range(1, number_of_signal_groups + 1):
         signal_group_name = read_qstring(fid)
         signal_group_prefix = read_qstring(fid)
         (signal_group_enabled, signal_group_num_channels, signal_group_num_amp_channels) = struct.unpack('<hhh', fid.read(6))
@@ -125,8 +126,7 @@ def read_header(fid):
                         header['board_dig_out_channels'].append(new_channel)
                     else:
                         raise Exception('Unknown channel type.')
-
-
+                        
     # Summarize contents of data file.
     header['num_amplifier_channels'] = len(header['amplifier_channels'])
     header['num_aux_input_channels'] = len(header['aux_input_channels'])
